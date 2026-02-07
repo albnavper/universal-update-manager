@@ -155,6 +155,14 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             if not installed:
                 installed = pkg.get("installed_version")
             
+            # Try version_detector for known apps
+            if not installed:
+                try:
+                    from core.version_detector import detect_version
+                    installed = detect_version(pkg["id"], pkg.get("name"))
+                except ImportError:
+                    pass
+            
             # Default to 'unknown' if we can't detect version
             # Still show the app so user knows it's tracked
             if not installed:
