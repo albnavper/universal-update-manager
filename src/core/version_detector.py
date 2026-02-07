@@ -91,6 +91,16 @@ class VersionDetector:
         version = self._detect_via_cli(app_id)
         if version:
             return version
+            
+        # Final fallback: check persistent store
+        try:
+            from core.version_store import get_stored_version
+            stored = get_stored_version(app_id)
+            if stored:
+                logger.debug(f"Using stored version for {app_id}: {stored}")
+                return stored
+        except ImportError:
+            pass
         
         return None
     

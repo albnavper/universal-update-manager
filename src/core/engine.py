@@ -331,6 +331,14 @@ class UpdateEngine:
             if pkg.get("id") == software_id:
                 pkg["installed_version"] = new_version
                 self.save_config()
+                
+                # Also persist to VersionStore for apps with hard-to-detect versions
+                try:
+                    from core.version_store import set_stored_version
+                    set_stored_version(software_id, new_version, source="update")
+                except Exception as e:
+                    logger.warning(f"Could not persist version store for {software_id}: {e}")
+                
                 logger.info(f"Updated {software_id} installed_version to {new_version}")
                 return
 

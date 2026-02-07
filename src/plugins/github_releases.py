@@ -87,11 +87,14 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             
         url = self.GITHUB_API.format(owner=owner_repo[0], repo=owner_repo[1])
         try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "UniversalUpdateManager/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=15) as response:
+            # Use stored token if available to avoid rate limits
+            headers = {"User-Agent": "UniversalUpdateManager/1.0"}
+            token = self.config.get("token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
                 # Log rate limit info
                 remaining = response.headers.get("X-RateLimit-Remaining", "?")
                 logger.debug(f"GitHub API rate limit remaining: {remaining}")
@@ -101,13 +104,17 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
                 reset_time = e.headers.get("X-RateLimit-Reset", "")
                 if reset_time:
                     import time
-                    reset_in = int(reset_time) - int(time.time())
-                    logger.error(f"GitHub API rate limit exceeded. Resets in {reset_in//60} min")
-                    # Store error for UI feedback
-                    self._last_error = f"Rate limit exceeded (resets in {reset_in//60} min)"
+                    try:
+                        reset_in = int(reset_time) - int(time.time())
+                        msg = f"Resets in {reset_in//60} min"
+                    except:
+                        msg = "Try again later"
+                    
+                    logger.error(f"GitHub API rate limit exceeded. {msg}")
+                    self._last_error = f"Rate limit exceeded ({msg})"
                 else:
-                    logger.error("GitHub API rate limit exceeded")
-                    self._last_error = "Rate limit exceeded - try again later or add GitHub token"
+                    logger.error(f"GitHub API rate limit exceeded")
+                    self._last_error = "Rate limit exceeded"
             elif e.code == 404:
                 logger.error(f"Repository not found: {repo}")
                 self._last_error = f"Repository '{repo}' not found"
@@ -127,10 +134,12 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
         """Fetch the repository description from GitHub API."""
         url = f"https://api.github.com/repos/{repo}"
         try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "UniversalUpdateManager/1.0"}
-            )
+            headers = {"User-Agent": "UniversalUpdateManager/1.0"}
+            token = self.config.get("token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+                
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
                 return data.get("description", "")
