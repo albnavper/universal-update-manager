@@ -331,11 +331,15 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             except Exception as e:
                 logger.warning(f"Could not create backup: {e}")
             
+            # Use apt-get to handle dependencies automatically
+            # Verify the path is absolute or relative with ./
+            install_path = str(file_path.absolute())
+            
             result = subprocess.run(
-                ["pkexec", "dpkg", "-i", str(file_path)],
+                ["pkexec", "apt-get", "install", "-y", install_path],
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=300,  # Longer timeout for dependency downloads
             )
             
             if result.returncode == 0:
