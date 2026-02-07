@@ -155,6 +155,11 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             if not installed:
                 installed = pkg.get("installed_version")
             
+            # Default to 'unknown' if we can't detect version
+            # Still show the app so user knows it's tracked
+            if not installed:
+                installed = "unknown"
+            
             # Normalize repo URL to user/repo format
             repo = pkg.get("repo", "")
             if "github.com/" in repo:
@@ -165,19 +170,18 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
                     repo = match.group(1).rstrip("/")
             pkg["repo"] = repo  # Update in place for later use
             
-            if installed:
-                # Get description from config or will be fetched later
-                description = pkg.get("description")
-                
-                software_list.append(SoftwareInfo(
-                    id=pkg["id"],
-                    name=pkg.get("name", pkg["id"]),
-                    installed_version=installed,
-                    latest_version=None,
-                    source_type=self.source_type,
-                    source_url=f"https://github.com/{repo}/releases",
-                    icon=pkg.get("icon"),
-                    description=description,
+            # Get description from config or will be fetched later
+            description = pkg.get("description")
+            
+            software_list.append(SoftwareInfo(
+                id=pkg["id"],
+                name=pkg.get("name", pkg["id"]),
+                installed_version=installed,
+                latest_version=None,
+                source_type=self.source_type,
+                source_url=f"https://github.com/{repo}/releases",
+                icon=pkg.get("icon"),
+                description=description,
                     status=UpdateStatus.UNKNOWN,
                 ))
         
