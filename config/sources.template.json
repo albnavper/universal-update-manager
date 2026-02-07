@@ -1,0 +1,22 @@
+{
+    "github": {
+        "enabled": true,
+        "packages": []
+    },
+    "flatpak": {
+        "enabled": true
+    },
+    "snap": {
+        "enabled": true
+    },
+    "apt": {
+        "enabled": false
+    },
+    "jetbrains": {
+        "enabled": true
+    },
+    "web": {
+        "enabled": true,
+        "packages": []
+    }
+}
