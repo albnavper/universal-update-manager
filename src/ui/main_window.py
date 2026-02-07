@@ -168,6 +168,27 @@ class MainWindow(Adw.ApplicationWindow):
         self.migrations: list[GitHubAlternative] = []
         
         self._build_ui()
+        
+        # Actions
+        action_group = Gio.SimpleActionGroup()
+        self.insert_action_group("win", action_group)
+        
+        action_check = Gio.SimpleAction.new("check-updates", None)
+        action_check.connect("activate", self._on_refresh) # Reuse refresh logic
+        action_group.add_action(action_check)
+        
+        action_settings = Gio.SimpleAction.new("settings", None)
+        action_settings.connect("activate", self._on_settings_clicked)
+        action_group.add_action(action_settings)
+        
+        action_about = Gio.SimpleAction.new("about", None)
+        action_about.connect("activate", self._on_about_clicked)
+        action_group.add_action(action_about)
+        
+        action_quit = Gio.SimpleAction.new("quit", None)
+        action_quit.connect("activate", self._on_quit) # Uses _on_quit method
+        action_group.add_action(action_quit)
+        
         self._init_engine()
 
     def _build_ui(self):
@@ -190,6 +211,18 @@ class MainWindow(Adw.ApplicationWindow):
         scan_btn.set_tooltip_text("Escanear software nuevo")
         scan_btn.connect("clicked", self._on_scan)
         header.pack_start(scan_btn)
+        
+        # Menu button
+        menu = Gio.Menu()
+        menu.append("Buscar actualizaciones", "win.check-updates")
+        menu.append("Configuración", "win.settings")
+        menu.append("Acerca de", "win.about")
+        menu.append("Salir", "win.quit")
+        
+        menu_btn = Gtk.MenuButton()
+        menu_btn.set_icon_name("open-menu-symbolic")
+        menu_btn.set_menu_model(menu)
+        header.pack_end(menu_btn)
         
         main_box.append(header)
 
@@ -928,6 +961,36 @@ class MainWindow(Adw.ApplicationWindow):
         # Handle other detected apps (manual)
         GLib.idle_add(self.banner.set_title, "⚠ Desinstalación manual requerida para este tipo")
 
+    
+    def _on_settings_clicked(self, action, param):
+        """Show settings dialog."""
+        dialog = SettingsDialog(self, self.engine)
+        dialog.present()
+
+    def _on_about_clicked(self, action, param):
+        """Show about dialog."""
+        dialog = Adw.AboutWindow(
+            transient_for=self,
+            application_name="Universal Update Manager",
+            application_icon="com.github.universalupdatemanager",
+            developer_name="Jorge García",
+            version="0.1.0",
+            copyright="© 2024 Jorge García",
+            website="https://github.com/jorgeaj/universal-update-manager",
+            issue_url="https://github.com/jorgeaj/universal-update-manager/issues",
+            license_type=Gtk.License.MIT_X11,
+        )
+        dialog.present()
+
+    def _on_quit(self, action, param):
+        """Quit the application completely."""
+        # Find the application instance to quit cleanly
+        app = self.get_application()
+        if hasattr(app, 'cleanup'):
+            app.cleanup()
+        else:
+            app.quit()
+
     def _show_error(self, message: str):
         """Show error message."""
         self.spinner.stop()
@@ -944,37 +1007,6 @@ class UniversalUpdateManager(Adw.Application):
             flags=Gio.ApplicationFlags.FLAGS_NONE,
         )
         self.window = None
-        # Menu button
-        menu = Gio.Menu()
-        menu.append("Buscar actualizaciones", "win.check-updates")
-        menu.append("Configuración", "win.settings")
-        menu.append("Acerca de", "win.about")
-        menu.append("Salir", "win.quit")
-        
-        menu_btn = Gtk.MenuButton()
-        menu_btn.set_icon_name("open-menu-symbolic")
-        menu_btn.set_menu_model(menu)
-        header.pack_end(menu_btn)
-        
-        # Actions
-        action_group = Gio.SimpleActionGroup()
-        self.add_action_group("win", action_group)
-        
-        action_check = Gio.SimpleAction.new("check-updates", None)
-        action_check.connect("activate", self._on_check_updates_clicked)
-        action_group.add_action(action_check)
-        
-        action_settings = Gio.SimpleAction.new("settings", None)
-        action_settings.connect("activate", self._on_settings_clicked)
-        action_group.add_action(action_settings)
-        
-        action_about = Gio.SimpleAction.new("about", None)
-        action_about.connect("activate", self._on_about_clicked)
-        action_group.add_action(action_about)
-        
-        action_quit = Gio.SimpleAction.new("quit", None)
-        action_quit.connect("activate", self._on_quit_clicked)
-        action_group.add_action(action_quit)
         self.tray = None
         self.hold_id = None
     
@@ -1050,25 +1082,6 @@ class UniversalUpdateManager(Adw.Application):
             self.window.present()
             self.window._on_refresh(None)
     
-    def _on_settings_clicked(self, action, param):
-        """Show settings dialog."""
-        dialog = SettingsDialog(self, self.engine)
-        dialog.present()
-
-    def _on_about_clicked(self, action, param):
-        """Show about dialog."""
-        dialog = Adw.AboutWindow(
-            transient_for=self.window,
-            application_name="Universal Update Manager",
-            application_icon="com.github.universalupdatemanager",
-            developer_name="Jorge García",
-            version="0.1.0",
-            copyright="© 2024 Jorge García",
-            website="https://github.com/jorgeaj/universal-update-manager",
-            issue_url="https://github.com/jorgeaj/universal-update-manager/issues",
-            license_type=Gtk.License.MIT_X11,
-        )
-        dialog.present()
     
     def _on_quit(self, action, param):
         """Quit the application completely."""
