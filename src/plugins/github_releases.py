@@ -126,6 +126,58 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             self._last_error = str(e)
         return None
 
+    def _fetch_releases_list(self, repo: str, max_releases: int = 10) -> list[dict]:
+        """Fetch a list of releases from GitHub API (for apps that publish assets on non-latest releases)."""
+        # Sanitize repo string if it contains full URL
+        if "github.com/" in repo:
+            import re
+            match = re.search(r"github\.com/([^/]+/[^/]+)", repo)
+            if match:
+                repo = match.group(1).rstrip("/")
+
+        owner_repo = repo.split("/")
+        if len(owner_repo) < 2:
+            logger.error(f"Invalid repo format: {repo}")
+            return []
+            
+        url = f"https://api.github.com/repos/{owner_repo[0]}/{owner_repo[1]}/releases?per_page={max_releases}"
+        try:
+            headers = {"User-Agent": "UniversalUpdateManager/1.0"}
+            token = self.config.get("token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as response:
+                remaining = response.headers.get("X-RateLimit-Remaining", "?")
+                logger.debug(f"GitHub API rate limit remaining: {remaining}")
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logger.error(f"Failed to fetch releases list from {repo}: {e}")
+            return []
+
+    def _find_release_with_asset(self, repo: str, asset_pattern: str) -> Optional[tuple[dict, dict]]:
+        """
+        Find the first release that contains an asset matching the pattern.
+        Returns (release, asset) tuple or None.
+        
+        This handles apps like Anki where downloadable assets are in older 
+        "launcher" releases (25.09) rather than the latest patch release (25.09.2).
+        """
+        releases = self._fetch_releases_list(repo)
+        if not releases:
+            return None
+        
+        regex = re.compile(asset_pattern)
+        for release in releases:
+            for asset in release.get("assets", []):
+                if regex.match(asset.get("name", "")):
+                    logger.info(f"Found matching asset in release {release.get('tag_name')}: {asset.get('name')}")
+                    return (release, asset)
+        
+        logger.warning(f"No matching asset found across {len(releases)} releases for pattern: {asset_pattern}")
+        return None
+
     def _parse_version(self, tag_name: str) -> str:
         """Parse version from tag name (strips 'v' prefix if present)."""
         return tag_name.lstrip("v")
@@ -260,11 +312,19 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             )
 
         asset = self._find_deb_asset(release, pkg_config["asset_pattern"])
+        
+        # Fallback: If latest release has no matching assets, search through older releases
+        # This handles apps like Anki where assets are published on major version releases
         if not asset:
-            return DownloadResult(
-                success=False,
-                error_message="No matching .deb asset found"
-            )
+            logger.info(f"No asset in latest release, searching older releases for {software.id}")
+            result = self._find_release_with_asset(pkg_config["repo"], pkg_config["asset_pattern"])
+            if result:
+                release, asset = result
+            else:
+                return DownloadResult(
+                    success=False,
+                    error_message="No matching asset found in any recent release"
+                )
 
         download_url = asset["browser_download_url"]
         
@@ -310,7 +370,7 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
         
         if filename.endswith(".deb"):
             return self._install_deb(download.file_path, software)
-        elif filename.endswith(".tar.gz") or filename.endswith(".tgz") or filename.endswith(".tar.xz") or filename.endswith(".txz"):
+        elif filename.endswith(".tar.gz") or filename.endswith(".tgz") or filename.endswith(".tar.xz") or filename.endswith(".txz") or filename.endswith(".tar.zst"):
             return self._install_tarball(download.file_path, software)
         elif filename.endswith(".appimage"):
             return self._install_appimage(download.file_path, software)
@@ -357,7 +417,7 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
             return InstallResult(success=False, error_message="pkexec not found")
     
     def _install_tarball(self, file_path: Path, software: SoftwareInfo) -> InstallResult:
-        """Install a .tar.gz by extracting to /opt."""
+        """Install a .tar.gz/.tar.xz/.tar.zst by extracting to /opt."""
         import tarfile
         
         # Determine install directory
@@ -365,21 +425,38 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
         install_dir = Path(f"/opt/{app_name}")
         
         try:
-            # Verify it's a valid tarball
-            if not tarfile.is_tarfile(file_path):
-                return InstallResult(
-                    success=False,
-                    error_message="Invalid tar.gz file"
-                )
-            
             # Create temp extraction directory
             import tempfile
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
+                filename = file_path.name.lower()
                 
-                # Extract tarball
-                with tarfile.open(file_path, "r:gz") as tar:
-                    tar.extractall(temp_path)
+                # Handle different compression formats
+                if filename.endswith(".tar.zst"):
+                    # Use external zstd command for zstd-compressed tarballs
+                    result = subprocess.run(
+                        ["tar", "--zstd", "-xf", str(file_path), "-C", str(temp_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    if result.returncode != 0:
+                        return InstallResult(
+                            success=False,
+                            error_message=f"Failed to extract .tar.zst: {result.stderr}"
+                        )
+                elif filename.endswith(".tar.xz") or filename.endswith(".txz"):
+                    with tarfile.open(file_path, "r:xz") as tar:
+                        tar.extractall(temp_path)
+                else:
+                    # Default: assume gzip
+                    if not tarfile.is_tarfile(file_path):
+                        return InstallResult(
+                            success=False,
+                            error_message="Invalid tar file"
+                        )
+                    with tarfile.open(file_path, "r:gz") as tar:
+                        tar.extractall(temp_path)
                 
                 # Find the extracted content (usually a single directory)
                 extracted_items = list(temp_path.iterdir())
