@@ -64,21 +64,6 @@ class SettingsDialog(Adw.PreferencesWindow):
         link_btn.set_valign(Gtk.Align.CENTER)
         help_row.add_suffix(link_btn)
         github_group.add(help_row)
-        
-        # About Group
-        about_group = Adw.PreferencesGroup()
-        about_group.set_title("Acerca de")
-        page.add(about_group)
-        
-        version_row = Adw.ActionRow()
-        version_row.set_title("Universal Update Manager")
-        try:
-            from __version__ import __version__
-            version_text = f"v{__version__}"
-        except ImportError:
-            version_text = "Dev"
-        version_row.set_subtitle(version_text)
-        about_group.add(version_row)
 
     def _on_token_apply(self, entry):
         """Save the token when apply button is clicked."""

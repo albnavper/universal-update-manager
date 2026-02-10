@@ -278,8 +278,10 @@ class GitHubReleasesPlugin(UpdateSourcePlugin):
         latest = self._parse_version(release.get("tag_name", ""))
         software.latest_version = latest
         
-        # Compare versions
-        if self._version_gt(latest, software.installed_version):
+        # Compare versions — but not against "unknown" (would always be true)
+        if software.installed_version in ("unknown", None, ""):
+            software.status = UpdateStatus.UNKNOWN
+        elif self._version_gt(latest, software.installed_version):
             software.status = UpdateStatus.UPDATE_AVAILABLE
         else:
             software.status = UpdateStatus.UP_TO_DATE
@@ -506,6 +508,13 @@ X-AppImage-Version={software.latest_version}
                             
                     except Exception as e:
                         logger.warning(f"Failed to create .desktop file: {e}")
+
+                    # Persist version for apps that can't be auto-detected
+                    try:
+                        from core.version_store import set_stored_version
+                        set_stored_version(software.id, software.latest_version, source="uum")
+                    except Exception as e:
+                        logger.warning(f"Failed to persist version: {e}")
 
                     return InstallResult(
                         success=True, 

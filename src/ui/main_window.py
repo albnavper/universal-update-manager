@@ -166,7 +166,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.all_software: list[SoftwareInfo] = []
         self.updates: list[SoftwareInfo] = []
         self.selected: set[str] = set()
-        self.migrations: list[GitHubAlternative] = []
+        self.migrations: dict[str, GitHubAlternative] = {}  # keyed by flatpak_id
         
         self._build_ui()
         
@@ -215,7 +215,6 @@ class MainWindow(Adw.ApplicationWindow):
         
         # Menu button
         menu = Gio.Menu()
-        menu.append("Buscar actualizaciones", "win.check-updates")
         menu.append("Configuración", "win.settings")
         menu.append("Acerca de", "win.about")
         menu.append("Salir", "win.quit")
@@ -249,10 +248,6 @@ class MainWindow(Adw.ApplicationWindow):
         # Apps tab
         apps_page = self._create_apps_page()
         self.tab_view.add_titled_with_icon(apps_page, "apps", "Aplicaciones", "view-grid-symbolic")
-        
-        # Migrations tab
-        migrations_page = self._create_migrations_page()
-        self.tab_view.add_titled_with_icon(migrations_page, "migrations", "Migraciones", "emblem-synchronizing-symbolic")
         
         main_box.append(self.tab_view)
 
@@ -305,50 +300,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.apps_box.append(loading_label)
         
         return scrolled
-    
-    def _create_migrations_page(self):
-        """Create the Flatpak→GitHub migrations page."""
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        
-        # Info banner at top
-        info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        info_box.set_margin_start(16)
-        info_box.set_margin_end(16)
-        info_box.set_margin_top(12)
-        info_box.set_margin_bottom(12)
-        info_box.add_css_class("card")
-        
-        info_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
-        info_icon.set_pixel_size(24)
-        info_box.append(info_icon)
-        
-        info_label = Gtk.Label(
-            label="Algunas apps Flatpak tienen versiones más nuevas en GitHub.\n"
-                  "La migración preservará tu configuración y datos."
-        )
-        info_label.set_wrap(True)
-        info_label.set_xalign(0)
-        info_box.append(info_label)
-        
-        page.append(info_box)
-        
-        # Scrollable list
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled.set_vexpand(True)
-        
-        self.migrations_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        scrolled.set_child(self.migrations_box)
-        
-        # Initial loading state
-        loading_label = Gtk.Label(label="Buscando alternativas...")
-        loading_label.set_margin_top(48)
-        loading_label.add_css_class("dim-label")
-        self.migrations_box.append(loading_label)
-        
-        page.append(scrolled)
-        
-        return page
 
     def _init_engine(self):
         """Initialize the update engine in background."""
@@ -408,7 +359,6 @@ class MainWindow(Adw.ApplicationWindow):
             logger.info(f"Found {len(self.all_software)} apps, {len(self.updates)} updates")
             
             GLib.idle_add(self._populate_updates)
-            GLib.idle_add(self._populate_apps)
             
             # Check for migration opportunities (Flatpak → GitHub)
             flatpak_apps = [
@@ -416,9 +366,12 @@ class MainWindow(Adw.ApplicationWindow):
                 for s in self.all_software if s.source_type == "flatpak"
             ]
             if flatpak_apps:
-                self.migrations = self.migrator.find_alternatives(flatpak_apps)
+                alts = self.migrator.find_alternatives(flatpak_apps)
+                self.migrations = {alt.flatpak_id: alt for alt in alts}
                 logger.info(f"Found {len(self.migrations)} migration opportunities")
-                GLib.idle_add(self._populate_migrations)
+            
+            # Populate apps after migrations are known (so inline buttons can be shown)
+            GLib.idle_add(self._populate_apps)
             
         except Exception as e:
             logger.error(f"Failed to initialize engine: {e}", exc_info=True)
@@ -514,104 +467,24 @@ class MainWindow(Adw.ApplicationWindow):
                 on_update=self._on_update_single,
                 on_uninstall=self._on_uninstall
             )
+            
+            # Check if this Flatpak app has a migration alternative
+            if software.source_type == "flatpak":
+                # Try matching by ID patterns (e.g. org.telegram.desktop)
+                alt = self.migrations.get(software.id)
+                if alt:
+                    migrate_btn = Gtk.Button(label="Migrar" if alt.is_newer else "GitHub")
+                    migrate_btn.set_tooltip_text(
+                        f"Flatpak {alt.flatpak_version} → GitHub {alt.github_version}"
+                    )
+                    migrate_btn.add_css_class("suggested-action" if alt.is_newer else "flat")
+                    migrate_btn.connect("clicked", lambda b, a=alt: self._on_migrate(a))
+                    row.append(migrate_btn)
+            
             self.apps_box.append(row)
             
             sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             self.apps_box.append(sep)
-    
-    def _populate_migrations(self):
-        """Populate the migrations tab."""
-        # Clear content
-        while child := self.migrations_box.get_first_child():
-            self.migrations_box.remove(child)
-        
-        if not self.migrations:
-            # No migrations available
-            empty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-            empty_box.set_margin_top(48)
-            empty_box.set_halign(Gtk.Align.CENTER)
-            
-            icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
-            icon.set_pixel_size(64)
-            icon.add_css_class("success")
-            empty_box.append(icon)
-            
-            label = Gtk.Label(label="Todo al día")
-            label.add_css_class("title-1")
-            empty_box.append(label)
-            
-            sublabel = Gtk.Label(
-                label="No hay Flatpaks con versiones más nuevas en GitHub"
-            )
-            sublabel.add_css_class("dim-label")
-            empty_box.append(sublabel)
-            
-            self.migrations_box.append(empty_box)
-            return
-        
-        # Show migration opportunities
-        for alt in self.migrations:
-            row = self._create_migration_row(alt)
-            self.migrations_box.append(row)
-            
-            sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-            self.migrations_box.append(sep)
-    
-    def _create_migration_row(self, alt: GitHubAlternative):
-        """Create a row for a migration opportunity."""
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.set_margin_start(16)
-        row.set_margin_end(16)
-        row.set_margin_top(12)
-        row.set_margin_bottom(12)
-        
-        # Icon
-        icon = Gtk.Image.new_from_icon_name("emblem-synchronizing-symbolic")
-        icon.set_pixel_size(40)
-        row.append(icon)
-        
-        # Info
-        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        info_box.set_hexpand(True)
-        
-        name_label = Gtk.Label(label=alt.flatpak_name)
-        name_label.set_xalign(0)
-        name_label.add_css_class("heading")
-        info_box.append(name_label)
-        
-        version_label = Gtk.Label(
-            label=f"Flatpak {alt.flatpak_version} → GitHub {alt.github_version}"
-        )
-        version_label.set_xalign(0)
-        version_label.add_css_class("dim-label")
-        info_box.append(version_label)
-        
-        repo_label = Gtk.Label(label=f"github.com/{alt.github_repo}")
-        repo_label.set_xalign(0)
-        repo_label.add_css_class("caption")
-        repo_label.add_css_class("dim-label")
-        info_box.append(repo_label)
-        
-        row.append(info_box)
-        
-        # Data size indicator
-        data_size = self.migrator.get_flatpak_data_size(alt.flatpak_id)
-        if data_size > 0:
-            size_mb = data_size / (1024 * 1024)
-            size_label = Gtk.Label(label=f"📁 {size_mb:.1f} MB")
-            size_label.add_css_class("dim-label")
-            size_label.set_tooltip_text("Datos que serán migrados")
-            row.append(size_label)
-        
-        # Migrate button
-        btn_label = "Migrar" if alt.is_newer else "Cambiar a GitHub"
-        migrate_btn = Gtk.Button(label=btn_label)
-        if alt.is_newer:
-            migrate_btn.add_css_class("suggested-action")
-        migrate_btn.connect("clicked", lambda b: self._on_migrate(alt))
-        row.append(migrate_btn)
-        
-        return row
     
     def _on_migrate(self, alt: GitHubAlternative):
         """Handle migration request."""
@@ -973,7 +846,7 @@ class MainWindow(Adw.ApplicationWindow):
         dialog = Adw.AboutWindow(
             transient_for=self,
             application_name="Universal Update Manager",
-            application_icon="com.github.universalupdatemanager",
+            application_icon="system-software-update",
             developer_name="Generated with Antigravity",
             version="0.0.2",
             website="https://github.com/albnavper/universal-update-manager",
