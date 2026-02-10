@@ -73,7 +73,7 @@ class SnapPlugin(UpdateSourcePlugin):
                 timeout=5,
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def _get_installed_apps(self) -> list[dict]:
@@ -214,7 +214,7 @@ class SnapPlugin(UpdateSourcePlugin):
         """Update the Snap application."""
         try:
             result = subprocess.run(
-                ["snap", "refresh", software.id],
+                ["pkexec", "snap", "refresh", software.id],
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minutes for large snaps
@@ -258,7 +258,7 @@ class SnapPlugin(UpdateSourcePlugin):
         """
         try:
             result = subprocess.run(
-                ["snap", "refresh"],
+                ["pkexec", "snap", "refresh"],
                 capture_output=True,
                 text=True,
                 timeout=600,  # 10 minutes for all snaps
@@ -286,7 +286,7 @@ class SnapPlugin(UpdateSourcePlugin):
         """
         try:
             result = subprocess.run(
-                ["snap", "remove", software.id],
+                ["pkexec", "snap", "remove", software.id],
                 capture_output=True,
                 text=True,
                 timeout=120,

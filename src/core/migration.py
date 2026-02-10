@@ -259,12 +259,8 @@ class FlatpakMigrator:
     
     def _version_is_newer(self, new_ver: str, old_ver: str) -> bool:
         """Compare versions, return True if new_ver is newer than old_ver."""
-        try:
-            from packaging import version
-            return version.parse(new_ver) > version.parse(old_ver)
-        except ImportError:
-            # Fallback: simple string comparison
-            return new_ver > old_ver
+        from core.version import is_newer
+        return is_newer(new_ver, old_ver)
     
     def migrate(self, alternative: GitHubAlternative, 
                 download_and_install_func) -> MigrationResult:
@@ -289,11 +285,19 @@ class FlatpakMigrator:
         try:
             install_result = download_and_install_func(alternative.github_repo)
             if not install_result.success:
+                # Rollback: keep Flatpak since GitHub install failed
+                logger.warning(f"GitHub install failed, keeping Flatpak for {app_id}")
+                if backup_path and backup_path.exists():
+                    shutil.rmtree(backup_path, ignore_errors=True)
                 return MigrationResult(
                     success=False, 
                     message=f"Install failed: {install_result.error_message}"
                 )
         except Exception as e:
+            # Rollback: keep Flatpak since GitHub install failed
+            logger.warning(f"GitHub install error, keeping Flatpak for {app_id}")
+            if backup_path and backup_path.exists():
+                shutil.rmtree(backup_path, ignore_errors=True)
             return MigrationResult(success=False, message=f"Install error: {e}")
         
         # Step 3: Restore data to native location

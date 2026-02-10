@@ -5,6 +5,7 @@ Tracks update history and provides native desktop notifications.
 
 import json
 import logging
+import os
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -39,9 +40,8 @@ class UpdateHistory:
         Args:
             history_file: Path to history JSON file. Defaults to ~/.config/uum/history.json
         """
-        self.history_file = history_file or (
-            Path.home() / ".config" / "uum" / "history.json"
-        )
+        xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        self.history_file = history_file or (xdg_config / "uum" / "history.json")
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
         self._load_history()
 
@@ -157,7 +157,7 @@ class NotificationManager:
                 timeout=5
             )
             self._has_notify_send = result.returncode == 0
-        except:
+        except Exception:
             self._has_notify_send = False
 
     def notify(

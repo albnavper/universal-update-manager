@@ -119,19 +119,15 @@ class TrayRunner:
             print(f"Failed to activate app: {e}", flush=True)
 
     def on_check_clicked(self, *args):
-        # Trigger 'check-updates' action
+        # Trigger 'check-updates' action via D-Bus
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            # Create typed variants for empty containers
-            args_variant = GLib.Variant("av", [])
-            options_variant = GLib.Variant("a{sv}", {})
-            
             bus.call_sync(
                 self.app_id,
                 "/com/github/universalupdatemanager",
                 "org.freedesktop.Application",
                 "ActivateAction",
-                GLib.Variant("(sav)", ("check-updates", args_variant, options_variant)),
+                GLib.Variant("(sava{sv})", ("check-updates", [], {})),
                 None,
                 Gio.DBusCallFlags.NONE,
                 -1,
@@ -143,25 +139,19 @@ class TrayRunner:
     def on_quit_clicked(self, *args):
         # Kill the parent process (main app) and then exit ourselves
         try:
-            import os
-            import signal
-            
             # Get parent PID (the main application)
             ppid = os.getppid()
             print(f"Killing parent process {ppid}...", flush=True)
             
-            # First try DBus gracefully
+            # First try D-Bus gracefully
             try:
                 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-                args_variant = GLib.Variant("av", [])
-                options_variant = GLib.Variant("a{sv}", {})
-                
                 bus.call_sync(
                     self.app_id,
                     "/com/github/universalupdatemanager",
                     "org.freedesktop.Application",
                     "ActivateAction",
-                    GLib.Variant("(sav)", ("quit", args_variant, options_variant)),
+                    GLib.Variant("(sava{sv})", ("quit", [], {})),
                     None,
                     Gio.DBusCallFlags.NONE,
                     500,  # Short timeout

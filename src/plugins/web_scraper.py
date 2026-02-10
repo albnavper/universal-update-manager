@@ -108,7 +108,7 @@ class WebScraperPlugin(UpdateSourcePlugin):
         try:
             parser.feed(html)
             return parser.get_text()
-        except:
+        except Exception:
             return html
     
     def get_tracked_software(self) -> list[SoftwareInfo]:

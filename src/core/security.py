@@ -4,6 +4,7 @@ Provides checksum verification, signature validation, and backup/rollback functi
 """
 
 import hashlib
+import os
 import shutil
 import json
 import logging
@@ -90,7 +91,8 @@ class BackupManager:
         Args:
             backup_dir: Directory to store backups. Defaults to ~/.cache/uum/backups
         """
-        self.backup_dir = backup_dir or Path.home() / ".cache" / "uum" / "backups"
+        xdg_cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        self.backup_dir = backup_dir or xdg_cache / "uum" / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.index_file = self.backup_dir / "index.json"
         self._load_index()

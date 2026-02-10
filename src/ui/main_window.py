@@ -7,6 +7,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gio
+import subprocess
 import threading
 import logging
 from pathlib import Path
@@ -137,7 +138,7 @@ class AppRow(Gtk.Box):
             # It's a file path
             try:
                 icon = Gtk.Image.new_from_file(resolved)
-            except:
+            except Exception:
                 icon = Gtk.Image.new_from_icon_name("application-x-executable-symbolic")
         else:
             # It's an icon name
@@ -782,7 +783,7 @@ class MainWindow(Adw.ApplicationWindow):
         """Handle scan completion."""
         if not unconfigured:
             self.banner.set_title("✓ No se encontró software sin configurar")
-            GLib.timeout_add(3000, lambda: self.banner.set_revealed(False))
+            GLib.timeout_add(3000, self._hide_banner)
             return
         
         self.banner.set_title(f"Se encontraron {len(unconfigured)} apps sin configurar")
@@ -973,11 +974,10 @@ class MainWindow(Adw.ApplicationWindow):
             transient_for=self,
             application_name="Universal Update Manager",
             application_icon="com.github.universalupdatemanager",
-            developer_name="Jorge García",
-            version="0.1.0",
-            copyright="© 2024 Jorge García",
-            website="https://github.com/jorgeaj/universal-update-manager",
-            issue_url="https://github.com/jorgeaj/universal-update-manager/issues",
+            developer_name="Generated with Antigravity",
+            version="0.0.2",
+            website="https://github.com/albnavper/universal-update-manager",
+            issue_url="https://github.com/albnavper/universal-update-manager/issues",
             license_type=Gtk.License.MIT_X11,
         )
         dialog.present()
@@ -996,6 +996,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.spinner.stop()
         self.banner.set_title(f"Error: {message}")
         self.banner.set_revealed(True)
+
+    def _hide_banner(self):
+        """Safely hide the banner (for use with GLib.timeout_add)."""
+        try:
+            self.banner.set_revealed(False)
+        except Exception:
+            pass
+        return False  # Don't repeat the timeout
 
 
 class UniversalUpdateManager(Adw.Application):
@@ -1033,7 +1041,6 @@ class UniversalUpdateManager(Adw.Application):
         """Handle application activation."""
         if not self.window:
             # Kill any zombie tray runners
-            import subprocess
             try:
                 subprocess.run(["pkill", "-f", "tray_runner.py"], check=False)
             except Exception:

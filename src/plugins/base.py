@@ -54,6 +54,7 @@ class DownloadResult:
     success: bool
     file_path: Optional[Path] = None
     error_message: Optional[str] = None
+    download_url: Optional[str] = None  # URL for manual download (used by web scraper)
     checksum: Optional[str] = None  # SHA256 of downloaded file
     checksum_verified: bool = False  # True if checksum was verified against expected
 

@@ -138,8 +138,9 @@ class JetBrainsPlugin(UpdateSourcePlugin):
             else:
                 software.status = UpdateStatus.UP_TO_DATE
         else:
-            # Simple version comparison
-            if software.latest_version != software.installed_version:
+            # Semantic version comparison
+            from core.version import compare_versions
+            if compare_versions(software.latest_version, software.installed_version) > 0:
                 software.status = UpdateStatus.UPDATE_AVAILABLE
             else:
                 software.status = UpdateStatus.UP_TO_DATE

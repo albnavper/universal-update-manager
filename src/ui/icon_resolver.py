@@ -26,8 +26,13 @@ class IconResolver:
     # Preferred sizes in order of preference
     PREFERRED_SIZES = ["128x128", "64x64", "48x48", "256x256", "scalable", "32x32"]
     
-    # Cache for resolved icons
+    # Cache for resolved icons (class-level singleton pattern)
     _cache: dict[str, Optional[str]] = {}
+    
+    @classmethod
+    def clear_cache(cls):
+        """Clear the icon resolution cache."""
+        cls._cache.clear()
     
     @classmethod
     def resolve(cls, software_id: str, source_type: str, 

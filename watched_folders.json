@@ -1,0 +1,7 @@
+{
+    "/data/torrents": {
+        "recursive": true,
+        "save_path": "/data/complete",
+        "save_path_type": 1
+    }
+}

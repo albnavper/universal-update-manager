@@ -261,7 +261,7 @@ class SoftwareScanner:
                     else:
                         # Just return first line for txt files
                         return content.strip().split("\n")[0]
-                except:
+                except Exception:
                     pass
         
         return None

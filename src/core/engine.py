@@ -4,6 +4,7 @@ Coordinates update checking and installation across all plugins.
 """
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 from pathlib import Path
@@ -37,6 +38,7 @@ class UpdateEngine:
         """
         self.config_path = config_path
         self.plugins: list[UpdateSourcePlugin] = []
+        self._check_lock = threading.Lock()  # Guard parallel cache population
         self.config = self._load_config(config_path)
         self._init_plugins()
 
@@ -254,10 +256,11 @@ class UpdateEngine:
         return results
 
     def _check_single(self, software: SoftwareInfo) -> SoftwareInfo:
-        """Check updates for a single software item."""
+        """Check updates for a single software item (thread-safe)."""
         plugin = self._get_plugin_for_software(software)
         if plugin:
-            return plugin.check_for_updates(software)
+            with self._check_lock:
+                return plugin.check_for_updates(software)
         software.status = UpdateStatus.ERROR
         software.error_message = "No plugin found"
         return software
